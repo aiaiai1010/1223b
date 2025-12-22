@@ -286,7 +286,7 @@
         <div class="info-panel">
             <div class="angle-display" id="angleDisplay">
                 <div class="angle-value" id="angleValue">--°</div>
-                <div class="angle-label">顔の向き（左右）</div>
+                <div class="angle-label">顔の向き（上下）</div>
             </div>
 
             <div class="calibration-status" id="calibrationStatus">
@@ -296,7 +296,7 @@
             <div class="metrics">
                 <div class="metric-card">
                     <div class="metric-value" id="rawAngle">--°</div>
-                    <div class="metric-label">デバイスの傾き（生値）</div>
+                    <div class="metric-label">デバイスの前後傾き（生値）</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value" id="calibratedAngle">--°</div>
@@ -333,7 +333,7 @@
                 <h3>💡 使い方</h3>
                 <ul>
                     <li>スマホのカメラとモーションセンサーへのアクセスを許可してください</li>
-                    <li>デバイスを左右に傾けると顔の向きが検出されます</li>
+                    <li>デバイスを前後に傾けると顔の向き（上下）が検出されます</li>
                     <li>カメラ映像は左右反転されています（鏡のように）</li>
                     <li>「キャリブレーション」で現在の位置を基準（0度）に設定できます</li>
                     <li>「リセット」でキャリブレーションを解除できます</li>
@@ -412,8 +412,8 @@
 
         // デバイスの傾きに基づいて顔の向きを計算
         function updateFaceOrientation() {
-            // gamma: 左右の傾き（左に傾けるとマイナス、右に傾けるとプラス）
-            let rawAngle = deviceOrientation.gamma || 0;
+            // beta: 前後の傾き（前に傾けるとプラス、後ろに傾けるとマイナス）
+            let rawAngle = deviceOrientation.beta || 0;
 
             // キャリブレーションオフセットを適用
             let calibratedAngle = rawAngle - calibrationOffset;
@@ -459,7 +459,7 @@
 
         // キャリブレーション
         function calibrate() {
-            calibrationOffset = deviceOrientation.gamma || 0;
+            calibrationOffset = deviceOrientation.beta || 0;
             isCalibrated = true;
             document.getElementById('calibrationStatus').classList.add('active');
             smoothedAngle = 0; // リセット
