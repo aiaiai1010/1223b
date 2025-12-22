@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>首角度検出システム</title>
+    <title>デバイス傾き制御システム</title>
     <style>
         * {
             margin: 0;
@@ -57,6 +57,7 @@
             width: 100%;
             height: auto;
             display: block;
+            transform: scaleX(-1); /* 左右反転 */
         }
 
         #canvas {
@@ -65,6 +66,7 @@
             left: 0;
             width: 100%;
             height: 100%;
+            transform: scaleX(-1); /* 左右反転 */
         }
 
         .info-panel {
@@ -79,20 +81,6 @@
             text-align: center;
             margin-bottom: 20px;
             transition: all 0.3s ease;
-        }
-
-        .angle-display.warning {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.02);
-            }
         }
 
         .angle-value {
@@ -132,39 +120,39 @@
             color: #666;
         }
 
-        .warning-message {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
+        .calibration-status {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
             display: none;
         }
 
-        .warning-message.active {
+        .calibration-status.active {
             display: block;
-            animation: slideIn 0.3s ease;
         }
 
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .calibration-status strong {
+            color: #2e7d32;
         }
 
-        .warning-message strong {
-            color: #856404;
+        .status {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status.error {
+            color: #f5576c;
         }
 
         .controls {
             display: flex;
             gap: 10px;
             justify-content: center;
+            margin-bottom: 15px;
         }
 
         button {
@@ -191,15 +179,71 @@
             cursor: not-allowed;
         }
 
-        .status {
-            text-align: center;
-            padding: 20px;
-            color: #666;
+        button.secondary {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        }
+
+        button.danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+
+        .youtube-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .youtube-section h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .youtube-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .youtube-input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
             font-size: 14px;
         }
 
-        .status.error {
-            color: #f5576c;
+        .youtube-input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .youtube-input-group button {
+            padding: 12px 20px;
+        }
+
+        .youtube-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 */
+            margin-top: 15px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .youtube-container.active {
+            display: block;
+        }
+
+        .youtube-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
         }
 
         .tips {
@@ -230,8 +274,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🧘 首角度検出システム</h1>
-            <p>正しい姿勢を保ちましょう</p>
+            <h1>📱 デバイス傾き制御システム</h1>
+            <p>顔の向きをデバイスの傾きで検出</p>
         </div>
 
         <div class="video-container">
@@ -242,21 +286,21 @@
         <div class="info-panel">
             <div class="angle-display" id="angleDisplay">
                 <div class="angle-value" id="angleValue">--°</div>
-                <div class="angle-label">首の前傾角度</div>
+                <div class="angle-label">顔の向き（左右）</div>
             </div>
 
-            <div class="warning-message" id="warningMessage">
-                <strong>⚠️ 警告:</strong> 首の角度が30度を超えています。姿勢を正してください。
+            <div class="calibration-status" id="calibrationStatus">
+                <strong>✓ キャリブレーション済み:</strong> 現在の位置が基準（0度）に設定されました
             </div>
 
             <div class="metrics">
                 <div class="metric-card">
-                    <div class="metric-value" id="faceAngle">--°</div>
-                    <div class="metric-label">顔の傾き</div>
+                    <div class="metric-value" id="rawAngle">--°</div>
+                    <div class="metric-label">デバイスの傾き（生値）</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value" id="deviceAngle">--°</div>
-                    <div class="metric-label">デバイスの傾き</div>
+                    <div class="metric-value" id="calibratedAngle">--°</div>
+                    <div class="metric-label">補正後の角度</div>
                 </div>
             </div>
 
@@ -269,13 +313,31 @@
                 <button id="stopBtn" onclick="stopDetection()" disabled>停止</button>
             </div>
 
+            <div class="controls">
+                <button class="secondary" id="calibrateBtn" onclick="calibrate()" disabled>キャリブレーション</button>
+                <button class="danger" id="resetBtn" onclick="resetCalibration()" disabled>リセット</button>
+            </div>
+
+            <div class="youtube-section">
+                <h3>📺 YouTube動画</h3>
+                <div class="youtube-input-group">
+                    <input type="text" id="youtubeUrl" placeholder="YouTube URLを入力してください">
+                    <button onclick="loadYouTube()">読込</button>
+                </div>
+                <div class="youtube-container" id="youtubeContainer">
+                    <iframe id="youtubeIframe" allowfullscreen></iframe>
+                </div>
+            </div>
+
             <div class="tips">
                 <h3>💡 使い方</h3>
                 <ul>
                     <li>スマホのカメラとモーションセンサーへのアクセスを許可してください</li>
-                    <li>前面カメラで顔を映してください</li>
-                    <li>首の角度が30度以上になると警告が表示されます</li>
-                    <li>デバイスを傾けた場合も正確に首の角度を計算します</li>
+                    <li>デバイスを左右に傾けると顔の向きが検出されます</li>
+                    <li>カメラ映像は左右反転されています（鏡のように）</li>
+                    <li>「キャリブレーション」で現在の位置を基準（0度）に設定できます</li>
+                    <li>「リセット」でキャリブレーションを解除できます</li>
+                    <li>YouTube URLを入力すると下部に動画が表示されます</li>
                 </ul>
             </div>
         </div>
@@ -292,8 +354,9 @@
         let camera;
         let deviceOrientation = { beta: 0, gamma: 0, alpha: 0 };
         let isRunning = false;
-        let lastFaceAngle = 0;
-        let smoothedNeckAngle = 0;
+        let isCalibrated = false;
+        let calibrationOffset = 0;
+        let smoothedAngle = 0;
         const SMOOTHING_FACTOR = 0.3;
 
         // MediaPipe Face Meshのセットアップ
@@ -337,79 +400,29 @@
                 drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, { color: '#30FF30' });
                 drawConnectors(canvasCtx, landmarks, FACEMESH_FACE_OVAL, { color: '#E0E0E0' });
 
-                // 顔の角度を計算
-                const faceAngle = calculateFaceAngle(landmarks);
-                lastFaceAngle = faceAngle;
-
-                // 首の角度を計算
-                const neckAngle = calculateNeckAngle(faceAngle, deviceOrientation);
-
-                // 平滑化
-                smoothedNeckAngle = smoothedNeckAngle * (1 - SMOOTHING_FACTOR) + neckAngle * SMOOTHING_FACTOR;
-
-                // UIを更新
-                updateUI(smoothedNeckAngle, faceAngle, deviceOrientation.beta);
-
                 // 重要なポイントを描画
                 drawKeyPoints(canvasCtx, landmarks, canvasElement.width, canvasElement.height);
             }
 
             canvasCtx.restore();
+
+            // デバイスの傾きに基づいて顔の向きを更新
+            updateFaceOrientation();
         }
 
-        // 顔の角度を計算（ピッチ角度 - 上下の傾き）
-        function calculateFaceAngle(landmarks) {
-            // 鼻の先端 (index 1)
-            const noseTip = landmarks[1];
+        // デバイスの傾きに基づいて顔の向きを計算
+        function updateFaceOrientation() {
+            // gamma: 左右の傾き（左に傾けるとマイナス、右に傾けるとプラス）
+            let rawAngle = deviceOrientation.gamma || 0;
 
-            // 鼻の付け根 (index 168)
-            const noseBridge = landmarks[168];
+            // キャリブレーションオフセットを適用
+            let calibratedAngle = rawAngle - calibrationOffset;
 
-            // 顎の先 (index 152)
-            const chin = landmarks[152];
+            // 平滑化
+            smoothedAngle = smoothedAngle * (1 - SMOOTHING_FACTOR) + calibratedAngle * SMOOTHING_FACTOR;
 
-            // 額の中心 (index 10)
-            const forehead = landmarks[10];
-
-            // 顔の中心線のベクトル（額から顎へ）
-            const faceVectorY = chin.y - forehead.y;
-            const faceVectorZ = chin.z - forehead.z;
-
-            // ピッチ角度を計算（前後の傾き）
-            let pitchAngle = Math.atan2(faceVectorZ, faceVectorY) * (180 / Math.PI);
-
-            // 角度を調整（下を向くとプラス）
-            pitchAngle = -pitchAngle;
-
-            // 鼻のベクトルも使用してより正確に
-            const noseVectorY = noseTip.y - noseBridge.y;
-            const noseVectorZ = noseTip.z - noseBridge.z;
-            let noseAngle = Math.atan2(noseVectorZ, noseVectorY) * (180 / Math.PI);
-            noseAngle = -noseAngle;
-
-            // 2つの角度を平均
-            const avgAngle = (pitchAngle + noseAngle) / 2;
-
-            return avgAngle;
-        }
-
-        // 実際の首の角度を計算
-        function calculateNeckAngle(faceAngle, deviceOrientation) {
-            // デバイスのベータ角度（前後の傾き）
-            // beta: 90 = デバイスが立っている, 0 = デバイスが平面
-            let deviceTilt = deviceOrientation.beta || 0;
-
-            // デバイスが立っている状態(90度)を基準にする
-            // デバイスが前に傾くほど、首の角度も増える
-            let deviceAngleContribution = 90 - deviceTilt;
-
-            // 実際の首の角度 = 顔の下向き角度 + デバイスの前傾角度
-            let neckAngle = faceAngle + deviceAngleContribution;
-
-            // 0度を基準に正規化（まっすぐ前を見ている状態が0度）
-            neckAngle = Math.max(0, neckAngle);
-
-            return neckAngle;
+            // UIを更新
+            updateUI(smoothedAngle, rawAngle, calibratedAngle);
         }
 
         // 重要なポイントを描画
@@ -434,25 +447,30 @@
         }
 
         // UIを更新
-        function updateUI(neckAngle, faceAngle, deviceBeta) {
+        function updateUI(angle, rawAngle, calibratedAngle) {
             const angleValue = document.getElementById('angleValue');
-            const faceAngleEl = document.getElementById('faceAngle');
-            const deviceAngleEl = document.getElementById('deviceAngle');
-            const angleDisplay = document.getElementById('angleDisplay');
-            const warningMessage = document.getElementById('warningMessage');
+            const rawAngleEl = document.getElementById('rawAngle');
+            const calibratedAngleEl = document.getElementById('calibratedAngle');
 
-            angleValue.textContent = Math.round(neckAngle) + '°';
-            faceAngleEl.textContent = Math.round(faceAngle) + '°';
-            deviceAngleEl.textContent = Math.round(90 - (deviceBeta || 90)) + '°';
+            angleValue.textContent = Math.round(angle) + '°';
+            rawAngleEl.textContent = Math.round(rawAngle) + '°';
+            calibratedAngleEl.textContent = Math.round(calibratedAngle) + '°';
+        }
 
-            // 30度以上で警告
-            if (neckAngle >= 30) {
-                angleDisplay.classList.add('warning');
-                warningMessage.classList.add('active');
-            } else {
-                angleDisplay.classList.remove('warning');
-                warningMessage.classList.remove('active');
-            }
+        // キャリブレーション
+        function calibrate() {
+            calibrationOffset = deviceOrientation.gamma || 0;
+            isCalibrated = true;
+            document.getElementById('calibrationStatus').classList.add('active');
+            smoothedAngle = 0; // リセット
+        }
+
+        // キャリブレーションをリセット
+        function resetCalibration() {
+            calibrationOffset = 0;
+            isCalibrated = false;
+            document.getElementById('calibrationStatus').classList.remove('active');
+            smoothedAngle = 0;
         }
 
         // デバイスの向きセンサーをセットアップ
@@ -487,6 +505,11 @@
                 beta: event.beta,   // X軸周りの回転（前後の傾き）
                 gamma: event.gamma  // Y軸周りの回転（左右の傾き）
             };
+
+            // リアルタイムで更新
+            if (isRunning) {
+                updateFaceOrientation();
+            }
         }
 
         // カメラを開始
@@ -541,8 +564,7 @@
                 // デバイスの向きセンサーをセットアップ
                 const orientationOk = await setupDeviceOrientation();
                 if (!orientationOk) {
-                    document.getElementById('status').textContent = 'デバイスセンサーは利用できませんが、カメラのみで継続します';
-                    document.getElementById('status').classList.add('error');
+                    throw new Error('デバイスセンサーが利用できません');
                 }
 
                 // カメラを開始
@@ -552,9 +574,11 @@
                 }
 
                 isRunning = true;
-                document.getElementById('status').textContent = '検出中... 顔をカメラに向けてください';
+                document.getElementById('status').textContent = '検出中... デバイスを傾けてください';
                 document.getElementById('status').classList.remove('error');
                 document.getElementById('stopBtn').disabled = false;
+                document.getElementById('calibrateBtn').disabled = false;
+                document.getElementById('resetBtn').disabled = false;
             } catch (error) {
                 console.error('Error starting detection:', error);
                 document.getElementById('status').textContent = 'エラー: ' + error.message;
@@ -580,6 +604,49 @@
             document.getElementById('status').textContent = '停止しました';
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
+            document.getElementById('calibrateBtn').disabled = true;
+            document.getElementById('resetBtn').disabled = true;
+        }
+
+        // YouTube動画を読み込む
+        function loadYouTube() {
+            const url = document.getElementById('youtubeUrl').value.trim();
+            if (!url) {
+                alert('YouTube URLを入力してください');
+                return;
+            }
+
+            // YouTube URLからビデオIDを抽出
+            let videoId = extractYouTubeVideoId(url);
+            if (!videoId) {
+                alert('有効なYouTube URLを入力してください');
+                return;
+            }
+
+            // iframeのsrcを設定
+            const iframe = document.getElementById('youtubeIframe');
+            iframe.src = `https://www.youtube.com/embed/${videoId}`;
+
+            // コンテナを表示
+            document.getElementById('youtubeContainer').classList.add('active');
+        }
+
+        // YouTube URLからビデオIDを抽出
+        function extractYouTubeVideoId(url) {
+            // 様々なYouTube URLフォーマットに対応
+            const patterns = [
+                /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\?\/]+)/,
+                /^([a-zA-Z0-9_-]{11})$/  // 直接ビデオIDが入力された場合
+            ];
+
+            for (let pattern of patterns) {
+                const match = url.match(pattern);
+                if (match && match[1]) {
+                    return match[1];
+                }
+            }
+
+            return null;
         }
 
         // ページ読み込み時
