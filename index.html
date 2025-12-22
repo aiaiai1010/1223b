@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>デバイス傾き制御システム</title>
+    <title>顔傾き検出システム</title>
     <style>
         * {
             margin: 0;
@@ -274,8 +274,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📱 デバイス傾き制御システム</h1>
-            <p>顔の向きをデバイスの傾きで検出</p>
+            <h1>😊 顔傾き検出システム</h1>
+            <p>顔の向き（上下）をリアルタイムで検出</p>
         </div>
 
         <div class="video-container">
@@ -296,7 +296,7 @@
             <div class="metrics">
                 <div class="metric-card">
                     <div class="metric-value" id="rawAngle">--°</div>
-                    <div class="metric-label">デバイスの前後傾き（生値）</div>
+                    <div class="metric-label">顔の角度（生値）</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value" id="calibratedAngle">--°</div>
@@ -305,7 +305,7 @@
             </div>
 
             <div class="status" id="status">
-                カメラとセンサーの許可を待っています...
+                カメラの許可を待っています...
             </div>
 
             <div class="controls">
@@ -332,8 +332,8 @@
             <div class="tips">
                 <h3>💡 使い方</h3>
                 <ul>
-                    <li>スマホのカメラとモーションセンサーへのアクセスを許可してください</li>
-                    <li>デバイスを前後に傾けると顔の向き（上下）が検出されます</li>
+                    <li>スマホのカメラへのアクセスを許可してください</li>
+                    <li>顔を上下に動かすと（うなずく/上を向く）顔の向きが検出されます</li>
                     <li>カメラ映像は左右反転されています（鏡のように）</li>
                     <li>「キャリブレーション」で現在の位置を基準（0度）に設定できます</li>
                     <li>「リセット」でキャリブレーションを解除できます</li>
@@ -352,11 +352,11 @@
         // グローバル変数
         let faceMesh;
         let camera;
-        let deviceOrientation = { beta: 0, gamma: 0, alpha: 0 };
         let isRunning = false;
         let isCalibrated = false;
         let calibrationOffset = 0;
         let smoothedAngle = 0;
+        let lastFaceAngle = 0;
         const SMOOTHING_FACTOR = 0.3;
 
         // MediaPipe Face Meshのセットアップ
@@ -402,27 +402,58 @@
 
                 // 重要なポイントを描画
                 drawKeyPoints(canvasCtx, landmarks, canvasElement.width, canvasElement.height);
+
+                // 顔の角度を計算
+                const faceAngle = calculateFaceAngle(landmarks);
+                lastFaceAngle = faceAngle;
+
+                // キャリブレーションオフセットを適用
+                let calibratedAngle = faceAngle - calibrationOffset;
+
+                // 平滑化
+                smoothedAngle = smoothedAngle * (1 - SMOOTHING_FACTOR) + calibratedAngle * SMOOTHING_FACTOR;
+
+                // UIを更新
+                updateUI(smoothedAngle, faceAngle, calibratedAngle);
             }
 
             canvasCtx.restore();
-
-            // デバイスの傾きに基づいて顔の向きを更新
-            updateFaceOrientation();
         }
 
-        // デバイスの傾きに基づいて顔の向きを計算
-        function updateFaceOrientation() {
-            // beta: 前後の傾き（前に傾けるとプラス、後ろに傾けるとマイナス）
-            let rawAngle = deviceOrientation.beta || 0;
+        // 顔の角度を計算（ピッチ角度 - 上下の傾き）
+        function calculateFaceAngle(landmarks) {
+            // 鼻の先端 (index 1)
+            const noseTip = landmarks[1];
 
-            // キャリブレーションオフセットを適用
-            let calibratedAngle = rawAngle - calibrationOffset;
+            // 鼻の付け根 (index 168)
+            const noseBridge = landmarks[168];
 
-            // 平滑化
-            smoothedAngle = smoothedAngle * (1 - SMOOTHING_FACTOR) + calibratedAngle * SMOOTHING_FACTOR;
+            // 顎の先 (index 152)
+            const chin = landmarks[152];
 
-            // UIを更新
-            updateUI(smoothedAngle, rawAngle, calibratedAngle);
+            // 額の中心 (index 10)
+            const forehead = landmarks[10];
+
+            // 顔の中心線のベクトル（額から顎へ）
+            const faceVectorY = chin.y - forehead.y;
+            const faceVectorZ = chin.z - forehead.z;
+
+            // ピッチ角度を計算（前後の傾き）
+            let pitchAngle = Math.atan2(faceVectorZ, faceVectorY) * (180 / Math.PI);
+
+            // 角度を調整（下を向くとプラス）
+            pitchAngle = -pitchAngle;
+
+            // 鼻のベクトルも使用してより正確に
+            const noseVectorY = noseTip.y - noseBridge.y;
+            const noseVectorZ = noseTip.z - noseBridge.z;
+            let noseAngle = Math.atan2(noseVectorZ, noseVectorY) * (180 / Math.PI);
+            noseAngle = -noseAngle;
+
+            // 2つの角度を平均
+            const avgAngle = (pitchAngle + noseAngle) / 2;
+
+            return avgAngle;
         }
 
         // 重要なポイントを描画
@@ -459,7 +490,7 @@
 
         // キャリブレーション
         function calibrate() {
-            calibrationOffset = deviceOrientation.beta || 0;
+            calibrationOffset = lastFaceAngle;
             isCalibrated = true;
             document.getElementById('calibrationStatus').classList.add('active');
             smoothedAngle = 0; // リセット
@@ -561,12 +592,6 @@
                 // Face Meshをセットアップ
                 setupFaceMesh();
 
-                // デバイスの向きセンサーをセットアップ
-                const orientationOk = await setupDeviceOrientation();
-                if (!orientationOk) {
-                    throw new Error('デバイスセンサーが利用できません');
-                }
-
                 // カメラを開始
                 const cameraOk = await startCamera();
                 if (!cameraOk) {
@@ -574,7 +599,7 @@
                 }
 
                 isRunning = true;
-                document.getElementById('status').textContent = '検出中... デバイスを傾けてください';
+                document.getElementById('status').textContent = '検出中... 顔をカメラに向けてください';
                 document.getElementById('status').classList.remove('error');
                 document.getElementById('stopBtn').disabled = false;
                 document.getElementById('calibrateBtn').disabled = false;
