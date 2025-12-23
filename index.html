@@ -286,7 +286,7 @@
         <div class="info-panel">
             <div class="angle-display" id="angleDisplay">
                 <div class="angle-value" id="angleValue">--°</div>
-                <div class="angle-label">顔の向き（左右）</div>
+                <div class="angle-label">顔の向き（上下）</div>
             </div>
 
             <div class="calibration-status" id="calibrationStatus">
@@ -295,12 +295,12 @@
 
             <div class="metrics">
                 <div class="metric-card">
-                    <div class="metric-value" id="rawAngle">--°</div>
-                    <div class="metric-label">顔の傾き（生値）</div>
+                    <div class="metric-value" id="rollAngle">--°</div>
+                    <div class="metric-label">左右の傾き（両目）</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value" id="calibratedAngle">--°</div>
-                    <div class="metric-label">補正後の角度</div>
+                    <div class="metric-value" id="verticalTilt">--°</div>
+                    <div class="metric-label">鼻-顎の差分</div>
                 </div>
             </div>
 
@@ -333,7 +333,9 @@
                 <h3>💡 使い方</h3>
                 <ul>
                     <li>カメラとモーションセンサーへのアクセスを許可してください</li>
-                    <li>顔の傾き（左右の向き）が検出されます</li>
+                    <li>顔の傾き（上下の向き）がMediaPipeで検出されます</li>
+                    <li>鼻と顎のランドマーク間の差分から上下の傾きを計算します</li>
+                    <li>左右の傾きは両目の角度から計算されます</li>
                     <li>カメラ映像は左右反転されています（鏡のように）</li>
                     <li>「キャリブレーション」で現在の位置を基準（0度）に設定できます</li>
                     <li>「リセット」でキャリブレーションを解除できます</li>
@@ -356,8 +358,10 @@
         let faceAngles = { pitch: 0, yaw: 0, roll: 0 }; // 顔の傾き角度
         let isRunning = false;
         let isCalibrated = false;
-        let calibrationOffset = 0;
-        let smoothedAngle = 0;
+        let calibrationOffsetPitch = 0; // 上下の傾きのオフセット
+        let calibrationOffsetRoll = 0;  // 左右の傾きのオフセット
+        let smoothedPitchAngle = 0;     // 上下の傾きの平滑化
+        let smoothedRollAngle = 0;      // 左右の傾きの平滑化
         const SMOOTHING_FACTOR = 0.3;
 
         // MediaPipe Face Meshのセットアップ
@@ -425,34 +429,43 @@
             const rightEye = landmarks[263];        // 右目
 
             // Pitch（上下の傾き）: 鼻先と顎のY座標の差から計算
-            const pitchAngle = Math.atan2(noseTip.y - chin.y, noseTip.z - chin.z) * (180 / Math.PI);
+            // Y座標の差を使って上下の傾きを検出（値が大きいほど顔が下を向いている）
+            const verticalDiff = noseTip.y - chin.y;
+            // ラジアンから度に変換し、スケーリング調整
+            const pitchAngle = verticalDiff * 180; // Y座標差を度に変換
 
             // Yaw（左右の向き）: デバイスの傾きから計算
             const yawAngle = deviceOrientation.beta || 0;
 
-            // Roll（傾き）: 左右の目の傾きから計算
+            // Roll（左右の傾き）: 左右の目の傾きから計算
             const rollAngle = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI);
 
             faceAngles = {
                 pitch: pitchAngle,
                 yaw: yawAngle,
-                roll: rollAngle
+                roll: rollAngle,
+                verticalDiff: verticalDiff // 鼻-顎の差分を保存
             };
         }
 
         // 顔の傾きに基づいて表示を更新
         function updateFaceOrientation() {
-            // 顔の左右の向き（yaw）を使用
-            let rawAngle = faceAngles.yaw || 0;
+            // 顔の上下の向き（pitch）を使用
+            let rawPitchAngle = faceAngles.pitch || 0;
+
+            // 顔の左右の傾き（roll）を使用
+            let rawRollAngle = faceAngles.roll || 0;
 
             // キャリブレーションオフセットを適用
-            let calibratedAngle = rawAngle - calibrationOffset;
+            let calibratedPitchAngle = rawPitchAngle - calibrationOffsetPitch;
+            let calibratedRollAngle = rawRollAngle - calibrationOffsetRoll;
 
             // 平滑化
-            smoothedAngle = smoothedAngle * (1 - SMOOTHING_FACTOR) + calibratedAngle * SMOOTHING_FACTOR;
+            smoothedPitchAngle = smoothedPitchAngle * (1 - SMOOTHING_FACTOR) + calibratedPitchAngle * SMOOTHING_FACTOR;
+            smoothedRollAngle = smoothedRollAngle * (1 - SMOOTHING_FACTOR) + calibratedRollAngle * SMOOTHING_FACTOR;
 
             // UIを更新（顔の傾き情報も渡す）
-            updateUI(smoothedAngle, rawAngle, calibratedAngle);
+            updateUI(smoothedPitchAngle, smoothedRollAngle, faceAngles.verticalDiff || 0);
         }
 
         // 重要なポイントを描画
@@ -477,30 +490,39 @@
         }
 
         // UIを更新
-        function updateUI(angle, rawAngle, calibratedAngle) {
+        function updateUI(pitchAngle, rollAngle, verticalDiff) {
             const angleValue = document.getElementById('angleValue');
-            const rawAngleEl = document.getElementById('rawAngle');
-            const calibratedAngleEl = document.getElementById('calibratedAngle');
+            const rollAngleEl = document.getElementById('rollAngle');
+            const verticalTiltEl = document.getElementById('verticalTilt');
 
-            angleValue.textContent = Math.round(angle) + '°';
-            rawAngleEl.textContent = Math.round(rawAngle) + '°';
-            calibratedAngleEl.textContent = Math.round(calibratedAngle) + '°';
+            // メインディスプレイ：上下の傾き
+            angleValue.textContent = Math.round(pitchAngle) + '°';
+
+            // メトリクス：左右の傾き（両目）
+            rollAngleEl.textContent = Math.round(rollAngle) + '°';
+
+            // メトリクス：鼻-顎の差分（生の値）
+            verticalTiltEl.textContent = (verticalDiff * 100).toFixed(1);
         }
 
         // キャリブレーション
         function calibrate() {
-            calibrationOffset = faceAngles.yaw || 0;
+            calibrationOffsetPitch = faceAngles.pitch || 0;
+            calibrationOffsetRoll = faceAngles.roll || 0;
             isCalibrated = true;
             document.getElementById('calibrationStatus').classList.add('active');
-            smoothedAngle = 0; // リセット
+            smoothedPitchAngle = 0; // リセット
+            smoothedRollAngle = 0; // リセット
         }
 
         // キャリブレーションをリセット
         function resetCalibration() {
-            calibrationOffset = 0;
+            calibrationOffsetPitch = 0;
+            calibrationOffsetRoll = 0;
             isCalibrated = false;
             document.getElementById('calibrationStatus').classList.remove('active');
-            smoothedAngle = 0;
+            smoothedPitchAngle = 0;
+            smoothedRollAngle = 0;
         }
 
         // デバイスの向きセンサーをセットアップ
@@ -604,7 +626,7 @@
                 }
 
                 isRunning = true;
-                document.getElementById('status').textContent = '検出中... 顔を左右に傾けてください';
+                document.getElementById('status').textContent = '検出中... 顔を上下に傾けてください';
                 document.getElementById('status').classList.remove('error');
                 document.getElementById('stopBtn').disabled = false;
                 document.getElementById('calibrateBtn').disabled = false;
